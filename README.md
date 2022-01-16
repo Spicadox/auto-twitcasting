@@ -15,6 +15,7 @@ Since this program runs and obtains the Twitcasting live streams through the Twi
 Put the `Access Code` and configure all the necessary settings in the `const.py.example` file(if you haven't already renamed `const.py.example` to `const.py`, do so now).
 
 
+Note: This script currently only works on Windows due to the way the subprocess args are configured. Configure the subprocess args yourself if you're not using Windows
 
 
 
