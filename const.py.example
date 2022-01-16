@@ -1,0 +1,15 @@
+# duration in seconds
+# Note twitcasting api allows upto 60 requests per minute
+SLEEP_TIME = 1
+
+bearer_token = None
+
+WEBHOOK_URL = None
+
+LOGGING = False
+
+# screen_id or id
+user_ids = ['robocosan', 'natsuiromatsuri', 'yozoramel', 'akirosenthal',
+            'minatoaqua', 'oozorasubaru', 'murasakishionch', 'yuzukichococh',
+            'nekomataokayu', 'uruharushia', 'himemoriluna']
+user_ids += ['whatweneed8837', '8ra195', 'masimasi0']
