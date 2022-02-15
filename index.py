@@ -18,6 +18,15 @@ user_ids = {user_id: [] for user_id in const.user_ids}
 if __name__ == "__main__":
     logger = create_logger("logfile.log")
     logger.info("Starting program")
+
+    # Get output path and if it ends with backward slash then remove it
+    if const.OUTPUT_PATH is not None or "":
+        output_path = const.OUTPUT_PATH
+        if output_path[-1] == "\\":
+            output_path = output_path[:-1]
+    else:
+        output_path = os.getcwd()
+
     while True:
         try:
             logger.debug(user_ids)
@@ -33,8 +42,6 @@ if __name__ == "__main__":
                 except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
                     logger.error(rerror)
                     continue
-
-
 
                 # If res returns a json with an error key then it is not currently live
                 if 'error' in res.keys():
@@ -82,8 +89,8 @@ if __name__ == "__main__":
                         requests.post(WEBHOOK_URL, json=message)
 
                     # Download the live stream
-                    yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part']
-                    yt_dlp_args += ['-o', f'archive\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s', live_url]
+                    yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part', '--embed-metadata']
+                    yt_dlp_args += ['-o', f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s', live_url]
                     result = subprocess.run(yt_dlp_args, shell=True)
                     logger.info(f"Downloading {live_url}")
                     logger.info(f"Download Return Code: {result.returncode}")
