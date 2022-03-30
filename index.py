@@ -1,22 +1,26 @@
 import time
+import os
 import requests
 import json
 import subprocess
 from datetime import datetime
 import const
 from log import create_logger
+import pytz
 
 
 SLEEP_TIME = const.SLEEP_TIME
 bearer_token = const.bearer_token
 WEBHOOK_URL = const.WEBHOOK_URL
 
+tz = pytz.timezone('Asia/Tokyo')
+
 # Dictionary comprehension of the list of twitcasting users
 user_ids = {user_id: [] for user_id in const.user_ids}
 
 
 if __name__ == "__main__":
-    logger = create_logger("logfile.log")
+    logger = create_logger()
     logger.info("Starting program")
 
     # Get output path and if it ends with backward slash then remove it
@@ -32,6 +36,7 @@ if __name__ == "__main__":
             logger.debug(user_ids)
             # Check whether user is currently like
             for user_id in user_ids:
+                time.sleep(1)
                 try:
                     headers = {'Authorization': f'Bearer {bearer_token}',
                                'Accept': 'application/json',
@@ -51,7 +56,6 @@ if __name__ == "__main__":
                     if res['error']['code'] == 404:
                         logger.info(f"{user_id} is currently offline...")
                         logger.info(f"Sleeping for {SLEEP_TIME} secs...")
-                        time.sleep(1)
                         continue
                     # If the request could not be sent due to an invalid bearer token
                     if res['error']['code'] == 1000:
@@ -62,7 +66,7 @@ if __name__ == "__main__":
                 screen_id = res['broadcaster']['screen_id']
                 user_image = res['broadcaster']['image']
                 live_title = res['movie']['title']
-                live_date = datetime.utcfromtimestamp(res['movie']['created']).strftime('%Y%m%d')
+                live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime('%Y%m%d')
                 live_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}"
                 logger.info(f"{screen_id} is currently live at {live_url}")
                 # If a live stream has been encountered for the first time
@@ -96,7 +100,6 @@ if __name__ == "__main__":
                     logger.info(f"Download Return Code: {result.returncode}")
                     user_ids[user_id].append(live_id)
                 logger.info(f"Sleeping for {SLEEP_TIME} secs...")
-                time.sleep(1)
         except Exception as e:
             logger.error(e)
 
