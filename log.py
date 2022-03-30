@@ -2,6 +2,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import os.path
 import const
+import datetime
 
 
 # Filter subclass that does not allow the file logging of sleeping messages
@@ -10,7 +11,7 @@ class NoParsingFilter(logging.Filter):
         return not record.getMessage().startswith('Sleeping') or 'is currently offline' in record.getMessage()
 
 
-def create_logger(logfile_name):
+def create_logger():
     # Check if log dir exist and if not create it
     logging.handlers.TimedRotatingFileHandler
     log_dir = os.getcwd()+"\\logs"
@@ -26,7 +27,8 @@ def create_logger(logfile_name):
 
     # Set logging level and log path
     logger.setLevel(logging.DEBUG)
-    log_path = log_dir + "\\" + logfile_name
+    current_date = str(datetime.date.today()).replace("-", "")
+    log_path = f"{log_dir}\\logfile.log"
 
     # Create a new log file everyday
     handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1)
