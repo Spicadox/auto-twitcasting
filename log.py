@@ -31,7 +31,7 @@ def create_logger():
     log_path = f"{log_dir}\\logfile.log"
 
     # Create a new log file everyday
-    handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1)
+    handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, encoding='utf-8')
     formatter = logging.Formatter('%(asctime)s [%(filename)s:%(lineno)d] %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M')
     handler.setFormatter(formatter)
     handler.suffix = "%Y%m%d"   # file suffix to be changed
