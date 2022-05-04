@@ -12,11 +12,26 @@ import pytz
 SLEEP_TIME = const.SLEEP_TIME
 bearer_token = const.bearer_token
 WEBHOOK_URL = const.WEBHOOK_URL
+PASSWORD_PATH = const.PASSWORD_PATH
 
 tz = pytz.timezone('Asia/Tokyo')
 
 # Dictionary comprehension of the list of twitcasting users
 user_ids = {user_id: [] for user_id in const.user_ids}
+
+
+def get_passwords():
+    try:
+        if PASSWORD_PATH is None or PASSWORD_PATH == "":
+            return None
+        with open(PASSWORD_PATH, mode='r', encoding="utf-8") as password_file:
+            lines = password_file.readlines()
+            passwords = {line.rstrip() for line in lines}
+        return passwords
+    except Exception as e:
+        logger.error(e)
+        logger.info("Error getting password list")
+        return None
 
 
 if __name__ == "__main__":
@@ -62,6 +77,7 @@ if __name__ == "__main__":
                         logger.error("Invalid bearer token")
                         quit()
 
+                protected = res['movie']['is_protected']
                 live_id = res['movie']['id']
                 screen_id = res['broadcaster']['screen_id']
                 user_image = res['broadcaster']['image']
@@ -73,6 +89,10 @@ if __name__ == "__main__":
                 if live_id not in user_ids[user_id]:
                     # Send notification to discord webhook
                     if WEBHOOK_URL is not None:
+                        if protected:
+                            live_text = f"{screen_id} has a `protected` live at {live_url}"
+                        else:
+                            live_text = f"{screen_id} is now live at {live_url}"
                         message = {"embeds": [{
                             "color": 13714,
                             "author": {
@@ -82,7 +102,7 @@ if __name__ == "__main__":
                             "fields": [
                                 {
                                     "name": res['movie']['title'],
-                                    "value": f"{screen_id} is now live at {live_url}"
+                                    "value": live_text
                                 }
                             ],
                             "thumbnail": {
@@ -92,12 +112,28 @@ if __name__ == "__main__":
                         }
                         requests.post(WEBHOOK_URL, json=message)
 
+                    # Get password list
+                    passwords = None
+                    if protected:
+                        passwords = get_passwords()
+
                     # Download the live stream
-                    yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part', '--embed-metadata']
-                    yt_dlp_args += ['-o', f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s', live_url]
-                    result = subprocess.run(yt_dlp_args, shell=True)
                     logger.info(f"Downloading {live_url}")
-                    logger.info(f"Download Return Code: {result.returncode}")
+                    if not protected:
+                        yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part', '--embed-metadata']
+                        yt_dlp_args += ['-o', f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s', live_url]
+                        result = subprocess.run(yt_dlp_args, shell=True)
+                    elif protected and passwords is not None:
+                        # Try downloading protected streams by trying all the passwords
+                        # This will open up a console for each password so make sure the password list isn't too long...
+                        for password in passwords:
+                            yt_dlp_args = ['start', 'cmd', '/c', 'yt-dlp', '--no-part', '--embed-metadata']
+                            yt_dlp_args += ['--video-password', password, '-o',
+                                            f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s',
+                                            live_url]
+                            result = subprocess.run(yt_dlp_args, shell=True)
+                    else:
+                        logger.error(f"Failed to download protected stream at {live_url}")
                     user_ids[user_id].append(live_id)
                 logger.info(f"Sleeping for {SLEEP_TIME} secs...")
         except Exception as e:
