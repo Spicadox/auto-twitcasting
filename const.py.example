@@ -16,3 +16,9 @@ user_ids += ['whatweneed8837', '8ra195', 'masimasi0']
 
 # Example: OUTPUT_PATH = "H:\\DownloadArchive\\【Twitcasting Archive】\\"
 OUTPUT_PATH = ""
+
+# Example: PASSWORD_PATH = "H:\\DownloadArchive\\【Twitcasting Archive】\\passwords.txt"
+# This is the path to your password text files and each password will be used to check and see if it can unlock a
+# protected stream. This will happen simultaneously so make sure there aren't hundreds of passwords.
+# Note there should be one password per line in the text file
+PASSWORD_PATH = ""
