@@ -8,7 +8,7 @@ import datetime
 # Filter subclass that does not allow the file logging of sleeping messages
 class NoParsingFilter(logging.Filter):
     def filter(self, record):
-        return not record.getMessage().startswith('Sleeping') or 'is currently offline' in record.getMessage()
+        return 'is currently offline' not in record.getMessage()
 
 
 def create_logger():
