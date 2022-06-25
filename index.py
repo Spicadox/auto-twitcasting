@@ -9,8 +9,8 @@ from datetime import datetime
 import aiohttp
 import pytz
 import requests
-from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
 
 import const
 from log import create_logger
@@ -81,14 +81,6 @@ def get_passwords():
         return None
 
 
-# Does not seem to catch membership streams with 100% success
-async def fetch_html_0(session, user_id):
-    headers = {'Accept': 'application/json'}
-    url = f"https://twitcasting.tv/userajax.php?c=islive&u={user_id}"
-    res = await session.get(url, headers=headers)
-    return res, user_id
-
-
 # This endpoint can catch membership streams but may rate limit after a while
 async def fetch_html(session, user_id):
     headers = {'Accept': 'application/json'}
@@ -140,7 +132,7 @@ def check_latest_live(user_id, session):
                    'Accept': 'application/json',
                    'X-Api-Version': '2.0'}
         res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
-                           headers=headers).json()
+                          headers=headers).json()
 
         try:
             user_res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}", headers=headers).json()
@@ -152,7 +144,8 @@ def check_latest_live(user_id, session):
             else:
                 return {}
         except TypeError:
-            res_data = {'movie': data['movies'][0], 'broadcaster':  {'screen_id': user_id, 'image': res['movies'][0]['large_thumbnail']}}
+            res_data = {'movie': data['movies'][0],
+                        'broadcaster': {'screen_id': user_id, 'image': res['movies'][0]['large_thumbnail']}}
             return res_data
 
     except requests.exceptions.ConnectionError as cError:
@@ -188,11 +181,13 @@ def poll_member_stream(user_id):
             movie_subtitle = first_video_element.find("span", class_="tw-movie-thumbnail-label").text.lstrip().rstrip()
         else:
             movie_subtitle = movie_title
-        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail-title").find_all("img", class_="tw-movie-thumbnail-title-icon")) > 1 else False
+        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail-title").find_all("img",
+                                                                                                                class_="tw-movie-thumbnail-title-icon")) > 1 else False
         image = soup.find("a", class_="tw-user-nav-icon").find("img", recursive=False)['src']
         thumbnail = soup.find("img", class_="tw-movie-thumbnail-image")['src']
         date = first_video_element.find("img", class_="tw-movie-thumbnail-image")['title'][:10].replace("/", "")
-        member_data = {'title': movie_title, 'subtitle': movie_subtitle, 'is_protected': is_protected, 'date': date, 'image': f'https:{image}', 'thumbnail': thumbnail}
+        member_data = {'title': movie_title, 'subtitle': movie_subtitle, 'is_protected': is_protected, 'date': date,
+                       'image': f'https:{image}', 'thumbnail': thumbnail}
     except KeyError as kError:
         logger.debug(page_res)
         logger.error(kError, exc_info=True)
@@ -220,27 +215,6 @@ def check_member_stream(user_id):
         # If this endpoint contains any empty movie dictionary then it's likely a member only stream
         logger.debug(kError)
         return True
-
-
-def add_live_users_0(lives):
-    for stream in lives:
-        stream_json = stream[0]
-        streamer_name = stream[1]
-        try:
-            if stream_json != 0:
-                movie_id = stream_json['url'][-9:]
-                if movie_id != user_ids[streamer_name]['movie_id']:
-                    user_ids[streamer_name] = {"movie_id": movie_id,
-                                               "notified": False,
-                                               "downloaded": False,
-                                               "type": stream_json['type']}
-            else:
-                user_ids[streamer_name] = {"movie_id": None,
-                                           "notified": False,
-                                           "downloaded": False,
-                                           "type": None}
-        except Exception as e:
-            logger.debug(e)
 
 
 def add_live_users(lives):
@@ -302,7 +276,7 @@ if __name__ == "__main__":
                                    'Accept': 'application/json',
                                    'X-Api-Version': '2.0'}
                         res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/current_live",
-                                           headers=headers).json()
+                                          headers=headers).json()
                         logger.debug(res)
                         live_url = f"https://twitcasting.tv/{user_id}/movie/{user_data['movie_id']}"
                         if 'movie_id' in res and res['movie_id'] is not None:
@@ -331,8 +305,10 @@ if __name__ == "__main__":
                         if member_res and user_ids[user_id]["type"] == "Live":
                             # For now use live thumbnail instead of pfp
                             try:
-                                res = {'movie': {'id': user_ids[user_id]['movie_id'], 'title': data['title'], 'subtitle': data['subtitle'],
-                                                 'last_owner_comment': None, 'is_protected': data['is_protected'], 'date': data['date'],
+                                res = {'movie': {'id': user_ids[user_id]['movie_id'], 'title': data['title'],
+                                                 'subtitle': data['subtitle'],
+                                                 'last_owner_comment': None, 'is_protected': data['is_protected'],
+                                                 'date': data['date'],
                                                  'member_thumbnail': data['thumbnail']},
                                        'broadcaster': {'screen_id': user_id,
                                                        'image': data['image']},
@@ -353,10 +329,14 @@ if __name__ == "__main__":
                     live_id = res['movie']['id']
                     screen_id = res['broadcaster']['screen_id']
                     user_image = res['broadcaster']['image']
-                    live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest" if 'member_thumbnail' not in res['movie'] else res['movie']['member_thumbnail']
+                    live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest" if 'member_thumbnail' not in \
+                                                                                                                                  res[
+                                                                                                                                      'movie'] else \
+                        res['movie']['member_thumbnail']
                     live_title = res['movie']['title']
                     live_comment = get_secondary_title(res)
-                    live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime('%Y%m%d') if 'created' in res['movie'] else res['movie']['date']
+                    live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime(
+                        '%Y%m%d') if 'created' in res['movie'] else res['movie']['date']
                     live_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}" if "_" not in screen_id[
                         0] or "_" not in screen_id[-1] else f"`https://twitcasting.tv/{screen_id}/movie/{live_id}`"
                     download_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}"
