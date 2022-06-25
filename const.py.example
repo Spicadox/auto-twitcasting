@@ -6,6 +6,9 @@ bearer_token = None
 
 WEBHOOK_URL = None
 
+# Path to the cookie or specify --cookies-from-browser <browser name> like how it's done in yt-dlp or specify None
+COOKIES = "--cookies-from-browser chrome"
+
 LOGGING = False
 
 # screen_id or id
