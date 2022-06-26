@@ -5,15 +5,14 @@ import subprocess
 import threading
 import time
 from datetime import datetime
-
 import aiohttp
 import pytz
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
-
 import const
 from log import create_logger
+
 
 SLEEP_TIME = const.SLEEP_TIME
 bearer_token = const.bearer_token
@@ -95,9 +94,6 @@ async def get_lives():
     rate_limit = False
     async with aiohttp.ClientSession() as session:
         for user_id in user_ids:
-            # res = {}
-            # Use the frontendapi to check for live streams as it has no known call limit but only useful for many streams
-            # NOTE: Do not know if frontendapi can be used for member's only stream therefore there could be redundancy
             tasks.append(fetch_html(session, user_id))
         results = await asyncio.gather(*tasks)
     for result in results:
@@ -181,8 +177,8 @@ def poll_member_stream(user_id):
             movie_subtitle = first_video_element.find("span", class_="tw-movie-thumbnail-label").text.lstrip().rstrip()
         else:
             movie_subtitle = movie_title
-        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail-title").find_all("img",
-                                                                                                                class_="tw-movie-thumbnail-title-icon")) > 1 else False
+        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail-title")
+                                   .find_all("img", class_="tw-movie-thumbnail-title-icon")) > 1 else False
         image = soup.find("a", class_="tw-user-nav-icon").find("img", recursive=False)['src']
         thumbnail = soup.find("img", class_="tw-movie-thumbnail-image")['src']
         date = first_video_element.find("img", class_="tw-movie-thumbnail-image")['title'][:10].replace("/", "")
@@ -325,20 +321,24 @@ if __name__ == "__main__":
                 # TODO set default values in event not found
                 try:
                     member_only = res['member_only'] if 'member_only' in res else False
-                    protected = res['movie']['is_protected'] if 'is_protected' in res else False
+                    protected = res['movie']['is_protected'] if 'is_protected' in res['movie'] else False
                     live_id = res['movie']['id']
                     screen_id = res['broadcaster']['screen_id']
                     user_image = res['broadcaster']['image']
-                    live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest" if 'member_thumbnail' not in \
-                                                                                                                                  res[
-                                                                                                                                      'movie'] else \
-                        res['movie']['member_thumbnail']
                     live_title = res['movie']['title']
                     live_comment = get_secondary_title(res)
-                    live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime(
-                        '%Y%m%d') if 'created' in res['movie'] else res['movie']['date']
-                    live_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}" if "_" not in screen_id[
-                        0] or "_" not in screen_id[-1] else f"`https://twitcasting.tv/{screen_id}/movie/{live_id}`"
+                    if 'member_thumbnail' not in res['movie']:
+                        live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest"
+                    else:
+                        live_thumbnail = res['movie']['member_thumbnail']
+                    if 'created' in res['movie']:
+                        live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime('%Y%m%d')
+                    else:
+                        live_date = res['movie']['date']
+                    if "_" not in screen_id[0] or "_" not in screen_id[-1]:
+                        live_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}"
+                    else:
+                        live_url = f"`https://twitcasting.tv/{screen_id}/movie/{live_id}`"
                     download_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}"
                 except KeyError as kError:
                     logger.error(kError, exc_info=True)
@@ -362,7 +362,6 @@ if __name__ == "__main__":
                                 "name": screen_id,
                                 "icon_url": user_image
                             },
-                            # "title": live_title,
                             "fields": [
                                 {
                                     "name": f"{live_title}\n{live_comment}\n\n{live_text}",
