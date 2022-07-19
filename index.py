@@ -6,18 +6,25 @@ import threading
 import time
 from datetime import datetime
 import aiohttp
-import pytz
+import dotenv
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 import const
+import renew
 from log import create_logger
 
 
 SLEEP_TIME = const.SLEEP_TIME
-bearer_token = const.bearer_token
 WEBHOOK_URL = const.WEBHOOK_URL
 PASSWORD_PATH = const.PASSWORD_PATH
+
+dotenv.load_dotenv()
+if os.getenv("BEARER_TOKEN") is not None:
+    bearer_token = os.getenv("BEARER_TOKEN")
+else:
+    bearer_token = const.bearer_token
+
 
 COOKIES = []
 if const.COOKIES is not None:
@@ -25,11 +32,16 @@ if const.COOKIES is not None:
         COOKIES = const.COOKIES.split(maxsplit=1)
     else:
         COOKIES = ['--cookies', const.COOKIES]
-tz = pytz.timezone('Asia/Tokyo')
 
 # Dictionary comprehension of the list of twitcasting users
 user_ids = {user_id: {"movie_id": None, "notified": False, "downloaded": False, "type": None} for user_id in
             const.user_ids}
+
+
+def set_bearer_token():
+    global bearer_token
+    dotenv.load_dotenv(override=True)
+    bearer_token = os.getenv("BEARER_TOKEN")
 
 
 def loading_text():
@@ -76,7 +88,7 @@ def get_passwords():
         return passwords
     except Exception as e:
         logger.error(e)
-        logger.info("Error getting password list")
+        logger.error("Error getting password list")
         return None
 
 
@@ -122,16 +134,27 @@ async def get_lives():
 
 
 # Used to check the latest movie to see if it's live and/or is a member's only stream
-def check_latest_live(user_id, session):
+def check_latest_live(user_id, session, logger):
     try:
         headers = {'Authorization': f'Bearer {bearer_token}',
                    'Accept': 'application/json',
                    'X-Api-Version': '2.0'}
-        res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
-                          headers=headers).json()
-
+        response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
+                               headers=headers)
+        if response.status_code == 401:
+            renew_status = renew.renew_token(logger=logger)
+            set_bearer_token()
+            if renew_status is None:
+                logger.error("Error renewing bearer token")
+        res = response.json()
         try:
-            user_res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}", headers=headers).json()
+            response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}", headers=headers).json()
+            if response.status_code == 401:
+                renew_status = renew.renew_token(logger=logger)
+                set_bearer_token()
+                if renew_status is None:
+                    logger.error("Error renewing bearer token")
+            user_res = response.json()
             # If the stream is live then it's a member's only live stream
             if len(res['movies']) != 0:
                 res_data = {'movie': res['movies'][0], 'broadcaster': user_res['user']}
@@ -253,9 +276,9 @@ if __name__ == "__main__":
 
     while True:
         try:
-            logger.debug(user_ids)
+            # logger.debug(user_ids)
             time.sleep(1)
-            logger.debug("Fetching Lives...")
+            # logger.debug("Fetching Lives...")
             # Check whether user is currently like
             try:
                 lives = asyncio.run(get_lives())
@@ -271,8 +294,15 @@ if __name__ == "__main__":
                         headers = {'Authorization': f'Bearer {bearer_token}',
                                    'Accept': 'application/json',
                                    'X-Api-Version': '2.0'}
-                        res = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/current_live",
-                                          headers=headers).json()
+                        response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/current_live",
+                                               headers=headers)
+                        if response.status_code == 401:
+                            renew_status = renew.renew_token(logger=logger)
+                            set_bearer_token()
+                            if renew_status is None:
+                                logger.error("Error renewing bearer token")
+                            continue
+                        res = response.json()
                         logger.debug(res)
                         live_url = f"https://twitcasting.tv/{user_id}/movie/{user_data['movie_id']}"
                         if 'movie_id' in res and res['movie_id'] is not None:
@@ -285,14 +315,14 @@ if __name__ == "__main__":
                         # logger.info(f"{user_id} is currently offline...")
                         continue
                 except requests.exceptions.ConnectionError as cError:
-                    logger.debug(cError)
+                    logger.error(cError)
                 except (requests.exceptions.RequestException, json.decoder.JSONDecodeError) as rerror:
                     logger.error(rerror)
                     continue
                 # If res returns a json with an error key then it is not currently live
                 if 'error' in res and res['error']['code'] == 404:
                     error_res = res
-                    res = check_latest_live(user_id, session)
+                    res = check_latest_live(user_id, session, logger)
                     res['member_only'] = True
                     res['movie']['member_thumbnail'] = res['movie']['small_thumbnail']
                     if res == {}:
@@ -311,7 +341,7 @@ if __name__ == "__main__":
                                        'member_only': True}
                                 logger.debug(res)
                             except Exception as e:
-                                logger.info(e, exc_info=True)
+                                logger.error(e, exc_info=True)
                         else:
                             continue
                     # If the request could not be sent due to an invalid bearer token
@@ -328,11 +358,14 @@ if __name__ == "__main__":
                     live_title = res['movie']['title']
                     live_comment = get_secondary_title(res)
                     if 'member_thumbnail' not in res['movie']:
-                        live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest"
+                        if 'large_thumbnail' in res['movie']:
+                            live_thumbnail = res['movie']['large_thumbnail']
+                        else:
+                            live_thumbnail = f"https://apiv2.twitcasting.tv/users/{user_id}/live/thumbnail?size=large&position=latest"
                     else:
                         live_thumbnail = res['movie']['member_thumbnail']
                     if 'created' in res['movie']:
-                        live_date = datetime.fromtimestamp(res['movie']['created'], tz=tz).strftime('%Y%m%d')
+                        live_date = datetime.fromtimestamp(res['movie']['created']).strftime('%Y%m%d')
                     else:
                         live_date = res['movie']['date']
                     if "_" not in screen_id[0] or "_" not in screen_id[-1]:
@@ -384,6 +417,7 @@ if __name__ == "__main__":
                     passwords = None
                     if protected:
                         passwords = get_passwords()
+                        passwords.add(datetime.utcnow().strftime("%Y%m%d"))
 
                     # Download the live stream
                     logger.info(f"Downloading {download_url}")
