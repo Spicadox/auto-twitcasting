@@ -7,8 +7,30 @@ import datetime
 
 # Filter subclass that does not allow the file logging of sleeping messages
 class NoParsingFilter(logging.Filter):
+    previous_record = None
+    count = 0
+
     def filter(self, record):
         return 'is currently offline' not in record.getMessage()
+
+
+class DuplicateFilter(logging.Filter):
+    previous_record = None
+    count = 0
+
+    def filter(self, record):
+        record_matches = False
+        if logging.getLogger().level == logging.DEBUG:
+            if NoParsingFilter.previous_record is None:
+                NoParsingFilter.previous_record = record.getMessage()
+            elif record == NoParsingFilter.previous_record:
+                NoParsingFilter.count += 1
+                record_matches = True
+            else:
+                NoParsingFilter.count = 0
+            if NoParsingFilter.count % 1000 == 0:
+                record.message = "Filtered 1000 identical message"
+        return not record_matches
 
 
 def create_logger():
@@ -55,11 +77,10 @@ def create_logger():
 
     # If logging is not enabled then remove the root log handler but keep the stream handler
     if not const.LOGGING:
-        logger = logging.getLogger()  # this gets the root logger
         try:
-            lhStdout = logger.handlers[0]  # stdout is the only handler initially
+            lhStdout = logger.handlers[1]
+            logger.removeHandler(lhStdout)
         except IndexError as ierror:
             logger.error(ierror)
             return logger
-        logger.removeHandler(lhStdout)
     return logger
