@@ -2,6 +2,7 @@
 # Note twitcasting api allows upto 60 requests per minute
 SLEEP_TIME = 1
 
+# If bearer token auto-renew is not ideal, then remove .env and specify BEARER_TOKEN in const.py
 bearer_token = None
 
 WEBHOOK_URL = None
