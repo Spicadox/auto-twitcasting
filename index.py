@@ -8,34 +8,12 @@ from datetime import datetime
 import aiohttp
 import dotenv
 import requests
+from pathlib import Path
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 import const
 import renew
 from log import create_logger
-
-
-SLEEP_TIME = const.SLEEP_TIME
-WEBHOOK_URL = const.WEBHOOK_URL
-PASSWORD_PATH = const.PASSWORD_PATH
-
-dotenv.load_dotenv()
-if os.getenv("BEARER_TOKEN") is not None:
-    bearer_token = os.getenv("BEARER_TOKEN")
-else:
-    bearer_token = const.bearer_token
-
-
-COOKIES = []
-if const.COOKIES is not None:
-    if '--cookies-from-browser' in const.COOKIES:
-        COOKIES = const.COOKIES.split(maxsplit=1)
-    else:
-        COOKIES = ['--cookies', const.COOKIES]
-
-# Dictionary comprehension of the list of twitcasting users
-user_ids = {user_id: {"movie_id": None, "notified": False, "downloaded": False, "type": None} for user_id in
-            const.user_ids}
 
 
 def set_bearer_token():
@@ -189,7 +167,7 @@ def poll_member_stream(user_id):
         member_icon_element = first_video_element.find("img", class_="tw-movie-thumbnail-title-icon")['src']
         membership_status = True if "member" in member_icon_element else False
         # If this endpoint returns False on is_on_live then it's likely a member only stream
-        logger.debug(membership_status)
+        logger.debug(f"{user_id} member stream: {membership_status}")
         movie_title_element = first_video_element.find("span", class_="tw-movie-thumbnail-title")
         if movie_title_element is not None:
             movie_title = movie_title_element.text.strip()
@@ -261,16 +239,46 @@ def add_live_users(lives):
 if __name__ == "__main__":
     logger = create_logger()
     logger.info("Starting program")
+
+    # Setup
+    SLEEP_TIME = const.SLEEP_TIME
+    WEBHOOK_URL = const.WEBHOOK_URL
+
+    try:
+        PASSWORD_PATH = Path(const.PASSWORD_PATH).resolve()
+    except Exception:
+        logger.error("There is a problem with the password path")
+
+    try:
+        dotenv.load_dotenv()
+        if os.getenv("BEARER_TOKEN") is not None:
+            bearer_token = os.getenv("BEARER_TOKEN")
+        else:
+            bearer_token = const.bearer_token
+    except Exception as env_exception:
+        logger.error(env_exception)
+
+    COOKIES = []
+    if const.COOKIES is not None:
+        if '--cookies-from-browser' in const.COOKIES:
+            COOKIES = const.COOKIES.split(maxsplit=1)
+        else:
+            COOKIES = ['--cookies', const.COOKIES]
+
+    # Dictionary comprehension of the list of twitcasting users
+    user_ids = {user_id: {"movie_id": None, "notified": False, "downloaded": False, "type": None} for user_id in
+                const.user_ids}
+
+    # Setup session
     session = requests.Session()
     session.mount("https://", HTTPAdapter(max_retries=5))
     live_streams = set()
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     threading.Thread(target=loading_text).start()
+
     # Get output path and if it ends with backward slash then remove it
     if const.OUTPUT_PATH is not None or "":
-        output_path = const.OUTPUT_PATH
-        if output_path[-1] == "\\":
-            output_path = output_path[:-1]
+        output_path = Path(const.OUTPUT_PATH).resolve()
     else:
         output_path = os.getcwd()
 
@@ -323,8 +331,6 @@ if __name__ == "__main__":
                 if 'error' in res and res['error']['code'] == 404:
                     error_res = res
                     res = check_latest_live(user_id, session, logger)
-                    res['member_only'] = True
-                    res['movie']['member_thumbnail'] = res['movie']['small_thumbnail']
                     if res == {}:
                         member_res, data = poll_member_stream(user_id)
                         # maybe also checking member_res is not necessary
@@ -344,6 +350,9 @@ if __name__ == "__main__":
                                 logger.error(e, exc_info=True)
                         else:
                             continue
+                    else:
+                        res['member_only'] = True
+                        res['movie']['member_thumbnail'] = res['movie']['small_thumbnail']
                     # If the request could not be sent due to an invalid bearer token
                     if error_res['error']['code'] == 1000:
                         logger.error("Invalid bearer token")
@@ -421,12 +430,12 @@ if __name__ == "__main__":
 
                     # Download the live stream
                     logger.info(f"Downloading {download_url}")
+                    output = f'{output_path}/{screen_id}/{live_date} - {live_title} ({live_id}).%(ext)s'
+                    logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
                                        'yt-dlp', *COOKIES, '--no-part', '--embed-metadata']
-                        yt_dlp_args += ['-o',
-                                        f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s',
-                                        download_url]
+                        yt_dlp_args += ['-o', output, download_url]
                         result = subprocess.run(yt_dlp_args, shell=True)
                     elif protected and passwords is not None:
                         # Try downloading protected streams by trying all the passwords
@@ -436,17 +445,13 @@ if __name__ == "__main__":
                             # Scenario where cookies unlock the video but video-password is still called so error or not
                             yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
                                            'yt-dlp', *COOKIES, '--no-part', '--embed-metadata']
-                            yt_dlp_args += ['--video-password', password, '-o',
-                                            f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s',
-                                            download_url]
+                            yt_dlp_args += ['--video-password', password, '-o', output, download_url]
                             result = subprocess.run(yt_dlp_args, shell=True)
                             # time.sleep(1)
                     elif member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
                                        'yt-dlp', *COOKIES, '--no-part']
-                        yt_dlp_args += ['--embed-metadata', '-o',
-                                        f'{output_path}\\{screen_id}\\{live_date} - {live_title} ({live_id}).%(ext)s',
-                                        download_url]
+                        yt_dlp_args += ['--embed-metadata', '-o', output, download_url]
                         result = subprocess.run(yt_dlp_args, shell=True)
                     else:
                         logger.error(f"Failed to download protected stream at {download_url}")
