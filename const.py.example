@@ -2,9 +2,12 @@
 # Note twitcasting api allows upto 60 requests per minute
 SLEEP_TIME = 1
 
-# If bearer token auto-renew is not ideal, then remove .env and specify BEARER_TOKEN in const.py
+# If auto renewing bearer token is not ideal(if bearer token will be manually renewed)
+# then remove .env and specify BEARER_TOKEN in const.py
+# Otherwise bearer_token will not be used here and instead be taken from .env
 bearer_token = None
 
+# Discord webhook url
 WEBHOOK_URL = None
 
 # Path to the cookie or specify --cookies-from-browser <browser name> like how it's done in yt-dlp or specify None
@@ -18,7 +21,7 @@ user_ids = ['robocosan', 'natsuiromatsuri', 'yozoramel', 'akirosenthal',
             'nekomataokayu', 'uruharushia', 'himemoriluna']
 user_ids += ['whatweneed8837', '8ra195', 'masimasi0']
 
-# Example: OUTPUT_PATH = "H:\\DownloadArchive\\【Twitcasting Archive】\\"
+# Example: OUTPUT_PATH = "H:\\DownloadArchive\\【Twitcasting Archive】" or r"H:/DownloadArchive/【Twitcasting Archive】"
 OUTPUT_PATH = ""
 
 # Example: PASSWORD_PATH = "H:\\DownloadArchive\\【Twitcasting Archive】\\passwords.txt"
