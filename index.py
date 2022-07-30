@@ -45,15 +45,19 @@ def format_url_message(user_id, live_id, live_message, live_url):
 
 
 def get_secondary_title(res):
-    temp_live_title = res['movie']['title']
-    temp_live_comment = res['movie']['last_owner_comment']
-    temp_live_subtitle = res['movie']['subtitle']
-    if temp_live_comment is not None and temp_live_title != temp_live_comment:
-        return temp_live_comment.replace("\\n", "\n")
-    elif temp_live_subtitle is not None and temp_live_title != temp_live_subtitle:
-        return temp_live_subtitle.replace("\\n", "\n")
-    else:
-        return res['broadcaster']['name']
+    try:
+        temp_live_title = res['movie']['title']
+        temp_live_comment = res['movie']['last_owner_comment']
+        temp_live_subtitle = res['movie']['subtitle']
+        if temp_live_comment is not None and temp_live_title != temp_live_comment:
+            return temp_live_comment.replace("\\n", "\n")
+        elif temp_live_subtitle is not None and temp_live_title != temp_live_subtitle:
+            return temp_live_subtitle.replace("\\n", "\n")
+        else:
+            return res['broadcaster']['screen_id']
+    except KeyError as kError:
+        logger.error(kError, exc_info=True)
+        return temp_live_title
 
 
 def get_passwords():
