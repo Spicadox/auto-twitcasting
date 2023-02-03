@@ -11,7 +11,20 @@ class NoParsingFilter(logging.Filter):
     count = 0
 
     def filter(self, record):
+        if len(record.getMessage()) < 42:
+            record.message = f"{record.getMessage()}{' '*(42-len(record.getMessage()))}"
         return 'is currently offline' not in record.getMessage()
+
+
+# # Filter subclass that adds whitespace and remove
+# class NoParsingFilter(logging.Filter):
+#     previous_record = None
+#     count = 0
+#
+#     def filter(self, record):
+#         if len(record.getMessage()) < 42:
+#             record.message = f"{record.getMessage()}{' '*(42-len(record.getMessage()))}"
+#         return 'is currently offline' not in record.getMessage()
 
 
 class DuplicateFilter(logging.Filter):
@@ -54,7 +67,7 @@ def create_logger():
 
     # Create a new log file everyday
     handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, encoding='utf-8')
-    formatter = logging.Formatter('%(asctime)s [%(filename)s:%(lineno)d] %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M')
+    formatter = logging.Formatter('%(asctime)s [%(filename)s:%(lineno)d] %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
     handler.suffix = "%Y%m%d"   # file suffix to be changed
     handler.addFilter(NoParsingFilter())
@@ -68,7 +81,8 @@ def create_logger():
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
     # set a format which is simpler for console use
-    console_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    # console_formatter = logging.Formatter(f'[%(levelname)s] %(asctime)s | %(message)s {" "*10}', datefmt='%Y-%m-%d %H:%M:%S')
+    console_formatter = logging.Formatter(f'[%(levelname)s] %(asctime)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     # tell the handler to use this format
     console.setFormatter(console_formatter)
     # add the handlers to the root logger
