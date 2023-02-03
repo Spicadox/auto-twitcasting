@@ -6,28 +6,42 @@ import threading
 import time
 from datetime import datetime
 import aiohttp
-import dotenv
 import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 import const
-import renew
 from log import create_logger
+import base64
+import re
 
 
-def set_bearer_token():
-    global bearer_token
-    dotenv.load_dotenv(override=True)
-    bearer_token = os.getenv("BEARER_TOKEN")
+# Note: Authorization: Basic base64({ClientID}:{ClientSecret}) can be used instead of Authorization: Bearer {ACCESS_TOKEN}
+CLIENT_ID = const.CLIENT_ID
+CLIENT_SECRET = const.CLIENT_SECRET
+ACCESS_TOKEN = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode("utf-8")
+
+
+def check_file(file_name, streamer, output_path):
+    try:
+        if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
+            #   Check if filename matches the regex meaning filename should be renamed incrementally else just append _1
+            multiple_vid_reg = re.compile("([0-9]{8})( - .* \([0-9]*\)\..{3})")
+            file_re = re.match(pattern=multiple_vid_reg, string=file_name)
+            if file_re is not None:
+                file_name = file_re.group(1) + str(time.strftime("%H%M%S")) + file_re.group(2)
+    except Exception as e:
+        logger.debug(e)
+    finally:
+        return file_name
 
 
 def loading_text():
-    loading_string = "[INFO] Waiting for live twitcasting streams "
+    loading_string = "Waiting for live twitcasting streams "
     animation = ["     ", ".    ", "..   ", "...  ", ".... ", "....."]
     idx = 0
     while True:
-        print(loading_string + animation[idx % len(animation)], end="\r")
+        print(f"[INFO] {datetime.now().replace(microsecond=0)} | " + loading_string + animation[idx % len(animation)], end="\r")
         time.sleep(0.3)
         idx += 1
         if idx == 6:
@@ -118,24 +132,20 @@ async def get_lives():
 # Used to check the latest movie to see if it's live and/or is a member's only stream
 def check_latest_live(user_id, session, logger):
     try:
-        headers = {'Authorization': f'Bearer {bearer_token}',
+        headers = {'Authorization': f'Basic {ACCESS_TOKEN}',
                    'Accept': 'application/json',
                    'X-Api-Version': '2.0'}
         response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
                                headers=headers)
         if response.status_code == 401:
-            renew_status = renew.renew_token(logger=logger)
-            set_bearer_token()
-            if renew_status is None:
-                logger.error("Error renewing bearer token")
+            logger.error("Error with tokens")
         res = response.json()
+        logger.debug(res)
+        logger.debug(response.status_code)
         try:
             response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}", headers=headers).json()
             if response.status_code == 401:
-                renew_status = renew.renew_token(logger=logger)
-                set_bearer_token()
-                if renew_status is None:
-                    logger.error("Error renewing bearer token")
+                logger.error("Error with tokens")
             user_res = response.json()
             # If the stream is live then it's a member's only live stream
             if len(res['movies']) != 0:
@@ -168,6 +178,8 @@ def poll_member_stream(user_id):
         page_res = requests.get(f"https://twitcasting.tv/{user_id}/show/").text
         soup = BeautifulSoup(page_res, "html.parser")
         first_video_element = soup.find("div", class_="recorded-movie-box").find("a", class_="tw-movie-thumbnail")
+        # sometimes tw-movie-thumbnail-title-icon does not exist if grabbed too early but no issues as it can repoll
+        # if is issue either give up or get tw-movie-thumbnail-image as a replacement but link can't be viewed probably
         member_icon_element = first_video_element.find("img", class_="tw-movie-thumbnail-title-icon")['src']
         membership_status = True if "member" in member_icon_element else False
         # If this endpoint returns False on is_on_live then it's likely a member only stream
@@ -231,6 +243,12 @@ def add_live_users(lives):
                                                "downloaded": False,
                                                "type": "Live"}
             else:
+                try:
+                    if user_ids[streamer_name]["movie_id"] is not None:
+                        # logger.info(f"{streamer_name} is now offline{' ' * 25}\n")
+                        logger.info(f"{streamer_name} is now offline{' '*25}")
+                except Exception as e:
+                    logger.error(e)
                 user_ids[streamer_name] = {"movie_id": None,
                                            "notified": False,
                                            "downloaded": False,
@@ -253,14 +271,7 @@ if __name__ == "__main__":
     except Exception:
         logger.error("There is a problem with the password path")
 
-    try:
-        dotenv.load_dotenv()
-        if os.getenv("BEARER_TOKEN") is not None:
-            bearer_token = os.getenv("BEARER_TOKEN")
-        else:
-            bearer_token = const.bearer_token
-    except Exception as env_exception:
-        logger.error(env_exception)
+    logger.debug(f'Authorization: Basic {ACCESS_TOKEN}')
 
     COOKIES = []
     if const.COOKIES is not None:
@@ -285,7 +296,6 @@ if __name__ == "__main__":
         output_path = Path(const.OUTPUT_PATH).resolve()
     else:
         output_path = os.getcwd()
-
     while True:
         try:
             # logger.debug(user_ids)
@@ -294,25 +304,27 @@ if __name__ == "__main__":
             # Check whether user is currently like
             try:
                 lives = asyncio.run(get_lives())
-            except (aiohttp.ServerDisconnectedError, aiohttp.ClientOSError) as aiohttpError:
-                logger.debug(aiohttpError)
+                logger.debug(lives)
+            except aiohttp.ServerDisconnectedError as server_error:
+                logger.error(f"{server_error}{' '*22}")
                 continue
-            logger.debug(lives)
+            except aiohttp.ClientOSError as client_error:
+                logger.error(f"{client_error}{' '*20}")
+            except Exception as e:
+                logger.error(e)
+                continue
             add_live_users(lives)
             for user_id, user_data in user_ids.items():
                 try:
                     if user_data['movie_id'] is not None and not user_data['notified']:
                         res = {}
-                        headers = {'Authorization': f'Bearer {bearer_token}',
+                        headers = {'Authorization': f'Basic {ACCESS_TOKEN}',
                                    'Accept': 'application/json',
                                    'X-Api-Version': '2.0'}
                         response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/current_live",
                                                headers=headers)
                         if response.status_code == 401:
-                            renew_status = renew.renew_token(logger=logger)
-                            set_bearer_token()
-                            if renew_status is None:
-                                logger.error("Error renewing bearer token")
+                            logger.error("Error with tokens")
                             continue
                         res = response.json()
                         logger.debug(res)
@@ -400,6 +412,7 @@ if __name__ == "__main__":
                             live_text = f"{screen_id} has a member's only live stream at "
                         else:
                             live_text = f"{screen_id} is now live at "
+                        # print(" " * 70, end='\n')
                         logger.info(live_text + download_url)
                         live_text, live_url = format_url_message(screen_id, live_id, live_text, live_url)
                         message = {"embeds": [{
@@ -433,13 +446,16 @@ if __name__ == "__main__":
                         passwords.add(datetime.utcnow().strftime("%Y%m%d"))
 
                     # Download the live stream
+                    # logger.info(f"Downloading {download_url}\n")
                     logger.info(f"Downloading {download_url}")
-                    output = f'{output_path}/{screen_id}/{live_date} - {live_title} ({live_id}).%(ext)s'
+                    file_name = check_file(f'{live_date} - {live_title} ({live_id}).mkv', screen_id, output_path)
+                    output = f'{output_path}/{screen_id}/{file_name}.mkv'
                     logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
-                                       'yt-dlp', *COOKIES, '--no-part', '--embed-metadata']
+                                       'yt-dlp', *COOKIES, '--no-part', '--embed-metadata', '-N', '4']
                         yt_dlp_args += ['-o', output, download_url]
+                        # TODO: get output from result so I can log it
                         result = subprocess.run(yt_dlp_args, shell=True)
                     elif protected and passwords is not None:
                         # Try downloading protected streams by trying all the passwords
@@ -451,6 +467,7 @@ if __name__ == "__main__":
                                            'yt-dlp', *COOKIES, '--no-part', '--embed-metadata']
                             yt_dlp_args += ['--video-password', password, '-o', output, download_url]
                             result = subprocess.run(yt_dlp_args, shell=True)
+                            # TODO pass check and if output by making another call checking -F and does not contain "ERROR:" then break out
                             # time.sleep(1)
                     elif member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
