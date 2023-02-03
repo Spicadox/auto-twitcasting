@@ -2,10 +2,9 @@
 # Note twitcasting api allows upto 60 requests per minute
 SLEEP_TIME = 1
 
-# If auto renewing bearer token is not ideal(if bearer token will be manually renewed)
-# then remove .env and specify BEARER_TOKEN in const.py
-# Otherwise bearer_token will not be used here and instead be taken from .env
-bearer_token = None
+# Client ID and Client Secret obtained from Twitcasting's developer page
+CLIENT_ID= ""
+CLIENT_SECRET= ""
 
 # Discord webhook url
 WEBHOOK_URL = None
