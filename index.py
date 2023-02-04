@@ -13,23 +13,19 @@ from requests.adapters import HTTPAdapter
 import const
 from log import create_logger
 import base64
-import re
 
 
-# Note: Authorization: Basic base64({ClientID}:{ClientSecret}) can be used instead of Authorization: Bearer {ACCESS_TOKEN}
 CLIENT_ID = const.CLIENT_ID
 CLIENT_SECRET = const.CLIENT_SECRET
 ACCESS_TOKEN = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode("utf-8")
 
 
-def check_file(file_name, streamer, output_path):
+def check_file(live_date, live_title, live_id, streamer, output_path):
+    file_name = f'{live_date} - {live_title} ({live_id}).mkv'
     try:
         if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
-            #   Check if filename matches the regex meaning filename should be renamed by appending the time to the date
-            multiple_vid_reg = re.compile("([0-9]{8})( - .* \([0-9]*\)\..{3})")
-            file_re = re.match(pattern=multiple_vid_reg, string=file_name)
-            if file_re is not None:
-                file_name = file_re.group(1) + str(time.strftime("%H%M%S")) + file_re.group(2)
+            live_date = f'{live_date}{str(time.strftime("%H%M%S"))}'
+        file_name = f'{live_date} - {live_title} ({live_id}).mkv'
     except Exception as e:
         logger.debug(e)
     finally:
@@ -448,7 +444,7 @@ if __name__ == "__main__":
                     # Download the live stream
                     # logger.info(f"Downloading {download_url}\n")
                     logger.info(f"Downloading {download_url}")
-                    file_name = check_file(f'{live_date} - {live_title} ({live_id}).mkv', screen_id, output_path)
+                    file_name = check_file(live_date, live_title, live_id, screen_id, output_path)
                     output = f'{output_path}/{screen_id}/{file_name}'
                     logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
