@@ -25,7 +25,7 @@ ACCESS_TOKEN = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode(
 def check_file(file_name, streamer, output_path):
     try:
         if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
-            #   Check if filename matches the regex meaning filename should be renamed incrementally else just append _1
+            #   Check if filename matches the regex meaning filename should be renamed by appending the time to the date
             multiple_vid_reg = re.compile("([0-9]{8})( - .* \([0-9]*\)\..{3})")
             file_re = re.match(pattern=multiple_vid_reg, string=file_name)
             if file_re is not None:
@@ -449,7 +449,7 @@ if __name__ == "__main__":
                     # logger.info(f"Downloading {download_url}\n")
                     logger.info(f"Downloading {download_url}")
                     file_name = check_file(f'{live_date} - {live_title} ({live_id}).mkv', screen_id, output_path)
-                    output = f'{output_path}/{screen_id}/{file_name}.mkv'
+                    output = f'{output_path}/{screen_id}/{file_name}'
                     logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
