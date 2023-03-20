@@ -21,11 +21,11 @@ ACCESS_TOKEN = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode(
 
 
 def check_file(live_date, live_title, live_id, streamer, output_path):
-    file_name = f'{live_date} - {live_title} ({live_id}).mkv'
+    file_name = f'{live_date} - {live_title} ({live_id}).mp4'
     try:
         if os.path.isfile(f'{output_path}\\{streamer}\\{file_name}'):
             live_date = f'{live_date}{str(time.strftime("%H%M%S"))}'
-        file_name = f'{live_date} - {live_title} ({live_id}).mkv'
+        file_name = f'{live_date} - {live_title} ({live_id}).mp4'
     except Exception as e:
         logger.debug(e)
     finally:
@@ -118,6 +118,9 @@ async def get_lives():
             res = {}
             await asyncio.sleep(1)
         id = result[1]
+        if not res:
+            res = {'error': True}
+
         live_streams.append((res, id))
     if rate_limit:
         #     TODO maybe switch api instead
@@ -240,7 +243,7 @@ def add_live_users(lives):
                                                "type": "Live"}
             else:
                 try:
-                    if user_ids[streamer_name]["movie_id"] is not None:
+                    if user_ids[streamer_name]["movie_id"] is not None and 'error' not in stream_json:
                         # logger.info(f"{streamer_name} is now offline{' ' * 25}\n")
                         logger.info(f"{streamer_name} is now offline{' '*25}")
                 except Exception as e:
