@@ -1,8 +1,41 @@
 import logging
+from io import BytesIO
 from logging.handlers import TimedRotatingFileHandler
 import os.path
 import const
 import datetime
+import gzip
+import shutil
+import zstandard as zstd
+
+
+# def namer(name):
+#     return name + ".zst"
+#
+#
+# def rotator(source, dest):
+#     compression_level = 3
+#     with open(source, 'rb') as input_file:
+#         with open(source + ".copy", 'wb') as copy_file:
+#             shutil.copyfileobj(input_file, copy_file)
+#     with open(source + ".copy", 'rb') as input_file:
+#         input_data = input_file.read()
+#         cctx = zstd.ZstdCompressor(level=compression_level)
+#         compressed_data = cctx.compress(input_data)
+#         with zstd.open(dest, 'wb') as output_file:
+#             output_file.write(compressed_data)
+#     os.remove(source + ".copy")
+#     os.remove(source)
+
+def namer(name):
+    return name + ".gz"
+
+
+def rotator(source, dest):
+    with open(source, 'rb') as f_in:
+        with gzip.open(dest, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    os.remove(source)
 
 
 # Filter subclass that does not allow the file logging of sleeping messages
@@ -66,12 +99,13 @@ def create_logger():
     log_path = f"{log_dir}\\logfile.log"
 
     # Create a new log file everyday
-    handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, encoding='utf-8')
+    handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, encoding='utf-8', backupCount=1)
     formatter = logging.Formatter('%(asctime)s [%(filename)s:%(lineno)d] %(levelname)-8s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
     handler.suffix = "%Y%m%d"   # file suffix to be changed
     handler.addFilter(NoParsingFilter())
-
+    handler.rotator = rotator
+    handler.namer = namer
     # logging.basicConfig(level=logging.INFO,
     #                     format='%(asctime)s [%(filename)s:%(lineno)d] %(levelname)-5s %(message)s',
     #                     datefmt='%Y-%m-%d %H:%M',
