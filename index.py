@@ -4,7 +4,7 @@ import os
 import subprocess
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import aiohttp
 import requests
 from pathlib import Path
@@ -176,28 +176,28 @@ def poll_member_stream(user_id):
     try:
         page_res = requests.get(f"https://twitcasting.tv/{user_id}/show/").text
         soup = BeautifulSoup(page_res, "html.parser")
-        first_video_element = soup.find("div", class_="recorded-movie-box").find("a", class_="tw-movie-thumbnail")
+        first_video_element = soup.find("div", class_="recorded-movie-box").find("a", class_="tw-movie-thumbnail2")
         # sometimes tw-movie-thumbnail-title-icon does not exist if grabbed too early but no issues as it can repoll
         # if is issue either give up or get tw-movie-thumbnail-image as a replacement but link can't be viewed probably
-        member_icon_element = first_video_element.find("img", class_="tw-movie-thumbnail-title-icon")['src']
+        member_icon_element = first_video_element.find("img", class_="tw-movie-thumbnail2-title-icon")['src']
         membership_status = True if "member" in member_icon_element else False
         # If this endpoint returns False on is_on_live then it's likely a member only stream
         logger.debug(f"{user_id} member stream: {membership_status}")
-        movie_title_element = first_video_element.find("span", class_="tw-movie-thumbnail-title")
+        movie_title_element = first_video_element.find("span", class_="tw-movie-thumbnail2-title")
         if movie_title_element is not None:
             movie_title = movie_title_element.text.strip()
         else:
             movie_title = user_id
-        movie_subtitle_element = first_video_element.find("span", class_="tw-movie-thumbnail-label")
+        movie_subtitle_element = first_video_element.find("span", class_="tw-movie-thumbnail2-label")
         if movie_subtitle_element is not None:
-            movie_subtitle = first_video_element.find("span", class_="tw-movie-thumbnail-label").text.lstrip().rstrip()
+            movie_subtitle = first_video_element.find("span", class_="tw-movie-thumbnail2-label").text.lstrip().rstrip()
         else:
             movie_subtitle = movie_title
-        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail-title")
-                                   .find_all("img", class_="tw-movie-thumbnail-title-icon")) > 1 else False
+        is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail2-title")
+                                   .find_all("img", class_="tw-movie-thumbnail2-title-icon")) > 1 else False
         image = soup.find("a", class_="tw-user-nav-icon").find("img", recursive=False)['src']
-        thumbnail = soup.find("img", class_="tw-movie-thumbnail-image")['src']
-        date = first_video_element.find("img", class_="tw-movie-thumbnail-image")['title'][:10].replace("/", "")
+        thumbnail = soup.find("img", class_="tw-movie-thumbnail2-image")['src']
+        date = first_video_element.find("img", class_="tw-movie-thumbnail2-image")['title'][:10].replace("/", "")
         member_data = {'title': movie_title, 'subtitle': movie_subtitle, 'is_protected': is_protected, 'date': date,
                        'image': f'https:{image}', 'thumbnail': thumbnail}
     except KeyError as kError:
@@ -233,6 +233,7 @@ def add_live_users(lives):
     for stream in lives:
         stream_json = stream[0]
         streamer_name = stream[1]
+
         try:
             if len(stream_json) != 0 and stream_json['movie']['live']:
                 movie_id = stream_json['movie']['id']
@@ -252,8 +253,11 @@ def add_live_users(lives):
                                            "notified": False,
                                            "downloaded": False,
                                            "type": None}
+        except KeyError as keyError:
+            logger.debug(keyError, exc_info=True)
+            logger.debug(f"Issue checking status of {streamer_name}: {stream_json}. Usually this means the user has not videos available.")
         except Exception as e:
-            logger.debug(e)
+            logger.debug(e, exc_info=True)
             continue
 
 
@@ -305,14 +309,21 @@ if __name__ == "__main__":
                 lives = asyncio.run(get_lives())
                 logger.debug(lives)
             except aiohttp.ServerDisconnectedError as server_error:
-                logger.error(f"{server_error}{' '*22}")
+                if len(str(server_error)) > 0:
+                    logger.error(f"{server_error}{' '*22}")
+                else:
+                    logger.debug(f"Error {server_error}", exc_info=True)
                 continue
             except aiohttp.ClientOSError as client_error:
                 logger.error(f"{client_error}{' '*20}")
             except Exception as e:
                 logger.error(e)
                 continue
-            add_live_users(lives)
+            try:
+                add_live_users(lives)
+            except NameError:
+                logger.error("Connection issue...")
+                continue
             for user_id, user_data in user_ids.items():
                 try:
                     if user_data['movie_id'] is not None and not user_data['notified']:
@@ -443,6 +454,7 @@ if __name__ == "__main__":
                     if protected:
                         passwords = get_passwords()
                         passwords.add(datetime.utcnow().strftime("%Y%m%d"))
+                    #   passwords.add(datetime.now(tz=timezone.utc).strftime("%Y%m%d"))
 
                     # Download the live stream
                     # logger.info(f"Downloading {download_url}\n")
@@ -454,7 +466,10 @@ if __name__ == "__main__":
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
                                        'yt-dlp', *COOKIES, '--no-part', '--embed-metadata', '-N', '4']
                         yt_dlp_args += ['-o', output, download_url]
-                        # TODO: get output from result so I can log it
+
+                        streamlink_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c', 'streamlink', '-o', output, download_url, 'best']
+                        # TODO:     get output from result so I can log it
+                        # result = subprocess.run(streamlink_args, shell=True)
                         result = subprocess.run(yt_dlp_args, shell=True)
                     elif protected and passwords is not None:
                         # Try downloading protected streams by trying all the passwords
