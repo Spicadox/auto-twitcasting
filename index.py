@@ -195,7 +195,7 @@ def poll_member_stream(user_id):
             movie_subtitle = movie_title
         is_protected = True if len(first_video_element.find("span", class_="tw-movie-thumbnail2-title")
                                    .find_all("img", class_="tw-movie-thumbnail2-title-icon")) > 1 else False
-        image = soup.find("a", class_="tw-user-nav-icon").find("img", recursive=False)['src']
+        image = soup.find("div", class_="tw-user-nav2-icon").find("img", recursive=False)['src']
         thumbnail = soup.find("img", class_="tw-movie-thumbnail2-image")['src']
         date = first_video_element.find("img", class_="tw-movie-thumbnail2-image")['title'][:10].replace("/", "")
         member_data = {'title': movie_title, 'subtitle': movie_subtitle, 'is_protected': is_protected, 'date': date,
@@ -463,7 +463,7 @@ if __name__ == "__main__":
                     output = f'{output_path}/{screen_id}/{file_name}'
                     logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
-                        yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c',
+                        yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/k',
                                        'yt-dlp', *COOKIES, '--no-part', '--embed-metadata', '-N', '4']
                         yt_dlp_args += ['-o', output, download_url]
 
