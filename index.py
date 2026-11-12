@@ -28,8 +28,7 @@ def check_file(live_date, live_title, live_id, streamer, output_path):
         file_name = f'{live_date} - {live_title} ({live_id}).mp4'
     except Exception as e:
         logger.debug(e)
-    finally:
-        return file_name
+    return file_name
 
 
 def loading_text():
@@ -134,29 +133,27 @@ def check_latest_live(user_id, session, logger):
         headers = {'Authorization': f'Basic {ACCESS_TOKEN}',
                    'Accept': 'application/json',
                    'X-Api-Version': '2.0'}
-        response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
-                               headers=headers)
-        if response.status_code == 401:
+        video_list_response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}/movies?limit=1",
+                                          headers=headers)
+        if video_list_response.status_code == 401:
             logger.error("Error with tokens")
-        res = response.json()
-        logger.debug(res)
-        logger.debug(response.status_code)
-        try:
-            response = session.get(f"https://apiv2.twitcasting.tv/users/{user_id}", headers=headers).json()
-            if response.status_code == 401:
-                logger.error("Error with tokens")
-            user_res = response.json()
-            # If the stream is live then it's a member's only live stream
-            if len(res['movies']) != 0:
-                res_data = {'movie': res['movies'][0], 'broadcaster': user_res['user']}
-                logger.debug(res_data)
-                return res_data
-            else:
-                return {}
-        except TypeError:
-            res_data = {'movie': data['movies'][0],
-                        'broadcaster': {'screen_id': user_id, 'image': res['movies'][0]['large_thumbnail']}}
-            return res_data
+        video_list_res = video_list_response.json()
+        logger.debug(video_list_res)
+        logger.debug(video_list_response.status_code)
+        movies = video_list_res.get('movies', [])
+        if not movies or not movies[0].get('is_live'):
+            return {}
+
+        movie = movies[0]
+        res_data = {
+            'movie': movie,
+            'broadcaster': {
+                'screen_id': user_id,
+                'image': movie.get('small_thumbnail') or movie.get('large_thumbnail')
+            }
+        }
+        logger.debug(res_data)
+        return res_data
 
     except requests.exceptions.ConnectionError as cError:
         logger.debug(cError)
@@ -165,14 +162,13 @@ def check_latest_live(user_id, session, logger):
         logger.error(rerror)
         return {}
     except Exception as e:
-        logger.debug(res)
-        logger.debug(e)
+        logger.debug(e, exc_info=True)
         return {}
 
 
 def poll_member_stream(user_id):
     membership_status = False
-    member_data = {}
+    member_data = {'title': None, 'subtitle': None, 'is_protected': None, 'date': None, 'image': None, 'thumbnail': None}
     try:
         page_res = requests.get(f"https://twitcasting.tv/{user_id}/show/").text
         soup = BeautifulSoup(page_res, "html.parser")
@@ -209,8 +205,8 @@ def poll_member_stream(user_id):
     except Exception as e:
         logger.debug(page_res)
         logger.error(e, exc_info=True)
-    finally:
-        return membership_status, member_data
+
+    return membership_status, member_data
 
 
 def check_member_stream(user_id):
@@ -291,7 +287,7 @@ if __name__ == "__main__":
     session = requests.Session()
     session.mount("https://", HTTPAdapter(max_retries=5))
     live_streams = set()
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     threading.Thread(target=loading_text).start()
 
     # Get output path and if it ends with backward slash then remove it
@@ -377,8 +373,12 @@ if __name__ == "__main__":
                         else:
                             continue
                     else:
-                        res['member_only'] = True
-                        res['movie']['member_thumbnail'] = res['movie']['small_thumbnail']
+                        res['member_only'] = res['movie'].get('is_membership', False)
+                        if res['member_only']:
+                            res['movie']['member_thumbnail'] = (
+                                res['movie'].get('small_thumbnail')
+                                or res['movie'].get('large_thumbnail')
+                            )
                     # If the request could not be sent due to an invalid bearer token
                     if error_res['error']['code'] == 1000:
                         logger.error("Invalid bearer token")
@@ -401,8 +401,11 @@ if __name__ == "__main__":
                         live_thumbnail = res['movie']['member_thumbnail']
                     if 'created' in res['movie']:
                         live_date = datetime.fromtimestamp(res['movie']['created']).strftime('%Y%m%d')
-                    else:
+                    elif res.get('movie', {}).get('date', {}) is not None:
                         live_date = res['movie']['date']
+                    else:
+                        logger.debug(f"Could not get live date for {screen_id}")
+                        live_date = datetime.now(tz=timezone.utc).strftime('%Y%m%d')
                     if "_" not in screen_id[0] or "_" not in screen_id[-1]:
                         live_url = f"https://twitcasting.tv/{screen_id}/movie/{live_id}"
                     else:
@@ -460,7 +463,10 @@ if __name__ == "__main__":
                     # logger.info(f"Downloading {download_url}\n")
                     logger.info(f"Downloading {download_url}")
                     file_name = check_file(live_date, live_title, live_id, screen_id, output_path)
-                    output = f'{output_path}/{screen_id}/{file_name}'
+                    if os.path.exists(output_path):
+                        output = f'{output_path}/{screen_id}/{file_name}'
+                    else:
+                        output = f'{os.getcwd()}/{screen_id}/{file_name}'
                     logger.debug(f"Download Path: {output}")
                     if not protected and not member_only:
                         yt_dlp_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/k',
@@ -469,8 +475,8 @@ if __name__ == "__main__":
 
                         streamlink_args = ['start', f'auto-twitcasting {screen_id} {live_id}', '/min', 'cmd', '/c', 'streamlink', '-o', output, download_url, 'best']
                         # TODO:     get output from result so I can log it
-                        # result = subprocess.run(streamlink_args, shell=True)
-                        result = subprocess.run(yt_dlp_args, shell=True)
+                        result = subprocess.run(streamlink_args, shell=True)
+                        #result = subprocess.run(yt_dlp_args, shell=True)
                     elif protected and passwords is not None:
                         # Try downloading protected streams by trying all the passwords
                         # If stream happens to also be a password protected member's only stream this should work too
