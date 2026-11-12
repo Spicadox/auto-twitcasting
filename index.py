@@ -456,8 +456,7 @@ if __name__ == "__main__":
                     passwords = None
                     if protected:
                         passwords = get_passwords()
-                        passwords.add(datetime.utcnow().strftime("%Y%m%d"))
-                    #   passwords.add(datetime.now(tz=timezone.utc).strftime("%Y%m%d"))
+                        passwords.add(datetime.now(tz=timezone.utc).strftime('%Y%m%d'))
 
                     # Download the live stream
                     # logger.info(f"Downloading {download_url}\n")
